@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>FireBot Controller — HC-05 Bluetooth</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --fire: #E24B4A;
+      --fire2: #EF9F27;
+      --bg: #0f0f0e;
+      --bg3: #222220;
+      --card: #1e1d1b;
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.14);
+      --txt: #f0ede8;
+      --muted: #888780;
+      --green: #63C920;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--txt);
+      font-family: 'Rajdhani', sans-serif;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(226,75,74,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(226,75,74,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* ── Connect Screen ─────────────────────────── */
+    #connect-screen {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: var(--bg); gap: 32px;
+    }
+
+    .connect-icon {
+      width: 100px; height: 100px; border-radius: 28px;
+      background: var(--card); border: 1px solid var(--border2);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .connect-icon::before {
+      content: ''; position: absolute; inset: -20px;
+      background: radial-gradient(circle, rgba(226,75,74,0.15), transparent 70%);
+      border-radius: 50%; pointer-events: none;
+    }
+    .connect-icon svg { width: 52px; height: 52px; }
+
+    .connect-title { font-size: 40px; font-weight: 700; letter-spacing: 2px; text-align: center; }
+    .connect-title span { color: var(--fire); }
+    .connect-sub { font-size: 15px; color: var(--muted); text-align: center; max-width: 320px; line-height: 1.7; }
+
+    #connectBtn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 16px 40px; border-radius: 14px;
+      background: var(--fire); border: none; color: #fff;
+      font-family: 'Rajdhani', sans-serif; font-size: 15px;
+      font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+      cursor: pointer; transition: all 0.15s;
+    }
+    #connectBtn:hover { background: #d03d3c; }
+    #connectBtn:active { transform: scale(0.96); }
+    #connectBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .connecting-spinner {
+      width: 48px; height: 48px;
+      border: 3px solid rgba(226,75,74,0.15);
+      border-top-color: var(--fire);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .connect-error {
+      font-size: 12px; color: var(--fire);
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 1px; text-align: center;
+      display: none;
+    }
+
+    /* ── Main App ───────────────────────────────── */
+    #app {
+      display: none;
+      position: relative; z-index: 1;
+      max-width: 480px; margin: 0 auto;
+      padding: 1rem; min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.85rem 1rem;
+      background: var(--card); border: 0.5px solid var(--border2);
+      border-radius: 14px; margin-bottom: 10px;
+      position: relative; overflow: hidden;
+    }
+    .header::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+      background: linear-gradient(180deg, var(--fire), var(--fire2));
+      border-radius: 14px 0 0 14px;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo svg { width: 34px; height: 34px; }
+    .title { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+    .title span { color: var(--fire); }
+    .status-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
+    .status-text { font-size: 11px; color: var(--muted); font-family:'Share Tech Mono',monospace; letter-spacing:1px; }
+
+    .disconnect-btn {
+      font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--muted); background: var(--bg3); border: 0.5px solid var(--border2);
+      border-radius: 7px; padding: 5px 10px; cursor: pointer; font-family: 'Rajdhani', sans-serif;
+    }
+    .disconnect-btn:hover { color: var(--fire); border-color: rgba(226,75,74,0.4); }
+
+    /* ── Grid ───────────────────────────────────── */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+
+    .card { background: var(--card); border: 0.5px solid var(--border); border-radius: 14px; padding: 1rem; }
+    .card-title { font-size: 10px; font-weight: 700; letter-spacing: 2.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+    /* ── D-Pad ──────────────────────────────────── */
+    .dpad {
+      display: grid; grid-template-columns: repeat(3, 54px);
+      grid-template-rows: repeat(3, 54px); gap: 5px;
+      margin: auto; width: fit-content;
+    }
+    .btn {
+      width: 54px; height: 54px; border: 0.5px solid var(--border2); border-radius: 9px;
+      background: var(--bg3); cursor: pointer; display: flex; align-items: center;
+      justify-content: center; font-size: 18px; transition: all 0.1s;
+      user-select: none; -webkit-user-select: none; color: var(--txt);
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .btn:active, .btn.pressed {
+      background: rgba(226,75,74,0.15); border-color: var(--fire);
+      transform: scale(0.91); color: var(--fire);
+    }
+    .btn.center-stop {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+      color: var(--fire); border-color: rgba(226,75,74,0.4);
+      background: rgba(226,75,74,0.08);
+    }
+    .btn.center-stop:active { background: var(--fire); color: #fff; }
+    .btn.empty { background: transparent; border: none; cursor: default; pointer-events: none; }
+
+    /* ── Speed ──────────────────────────────────── */
+    .speed-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .speed-val { font-family: 'Share Tech Mono', monospace; color: var(--txt); font-size: 15px; font-weight: 600; }
+    input[type="range"] {
+      width: 100%; -webkit-appearance: none; appearance: none;
+      height: 4px; background: var(--bg3); border-radius: 2px; outline: none; border: 0.5px solid var(--border);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px;
+      border-radius: 50%; background: var(--fire); cursor: pointer; border: 2px solid var(--bg);
+    }
+    .pwm-row { display: flex; justify-content: space-between; margin-top: 8px; }
+    .pwm-row span { font-size: 11px; color: var(--muted); font-family: 'Share Tech Mono', monospace; }
+
+    /* ── Sensors ────────────────────────────────── */
+    .sensor-row { display: flex; justify-content: space-around; margin-bottom: 14px; }
+    .sensor { text-align: center; }
+    .sensor-val { font-family: 'Share Tech Mono', monospace; font-size: 20px; font-weight: 600; color: var(--txt); }
+    .sensor-label { font-size: 9px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-top: 3px; }
+    .flame-indicator {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--bg3); border: 1px solid var(--border2);
+      display: inline-block; margin-bottom: 5px; transition: all 0.3s;
+    }
+    .flame-indicator.alert {
+      background: var(--fire); border-color: var(--fire);
+      box-shadow: 0 0 10px rgba(226,75,74,0.5);
+      animation: alertpulse 0.5s infinite;
+    }
+    @keyframes alertpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ── Full Cards ─────────────────────────────── */
+    .full-card { background: var(--card); border: 0.5px solid var(--border); border-radius: 14px; padding: 1rem; margin-bottom: 10px; }
+
+    /* ── Pump ───────────────────────────────────── */
+    .pump-btn {
+      width: 100%; padding: 15px; border-radius: 10px;
+      font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 2.5px;
+      cursor: pointer; border: 1px solid var(--fire);
+      background: rgba(226,75,74,0.08); color: var(--fire);
+      text-transform: uppercase; transition: all 0.15s; margin-bottom: 10px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pump-btn.on { background: var(--fire); color: #fff; box-shadow: 0 0 24px rgba(226,75,74,0.35); }
+
+    /* ── Extras ─────────────────────────────────── */
+    .extras-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .extra-btn {
+      padding: 11px; border-radius: 9px;
+      font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+      cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg3);
+      color: var(--muted); text-transform: uppercase; transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .extra-btn.on { background: rgba(99,201,32,0.1); border-color: var(--green); color: var(--green); }
+    .extra-btn:active { transform: scale(0.95); }
+
+    /* ── Alert Banner ───────────────────────────── */
+    .alert-banner {
+      display: none; align-items: center; gap: 10px; padding: 10px 14px;
+      background: rgba(226,75,74,0.12); border: 1px solid rgba(226,75,74,0.4);
+      border-radius: 10px; margin-bottom: 10px; animation: alertpulse 0.5s infinite;
+    }
+    .alert-banner.show { display: flex; }
+    .alert-banner span { font-size: 13px; font-weight: 700; letter-spacing: 1px; color: var(--fire); }
+
+    /* ── Terminal ───────────────────────────────── */
+    .serial-box {
+      background: var(--bg3); border: 0.5px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; font-family: 'Share Tech Mono', monospace; font-size: 11px;
+      color: var(--muted); height: 130px; overflow-y: auto; line-height: 1.8;
+    }
+    .serial-box p.tx  { color: var(--fire); }
+    .serial-box p.rx  { color: var(--green); }
+    .serial-box p.sys { color: #5a9cf0; }
+
+    /* ── Custom Command ─────────────────────────── */
+    .cmd-row { display: flex; gap: 8px; }
+    .cmd-input {
+      flex: 1; background: var(--bg3); border: 0.5px solid var(--border2);
+      border-radius: 9px; color: var(--txt);
+      font-family: 'Share Tech Mono', monospace; font-size: 13px;
+      padding: 9px 12px; outline: none;
+    }
+    .cmd-input:focus { border-color: var(--fire); }
+    .cmd-send {
+      padding: 9px 18px; border-radius: 9px; background: var(--fire); border: none;
+      color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 13px;
+      font-weight: 700; letter-spacing: 1px; cursor: pointer;
+    }
+    .cmd-send:active { opacity: 0.8; }
+
+    /* ── Keyboard Hint ──────────────────────────── */
+    .kbd-hint { text-align: center; font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 10px; }
+    .key {
+      display: inline-block; background: var(--bg3); border: 0.5px solid var(--border2);
+      border-radius: 4px; padding: 1px 6px; font-family: 'Share Tech Mono', monospace; font-size: 10px;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Connect Screen ──────────────────────────────── -->
+<div id="connect-screen">
+  <div class="connect-icon">
+    <svg viewBox="0 0 52 52" fill="none">
+      <path d="M26 4C26 4 13 16 13 26C13 32 17 36.5 22 39C20 35.5 22 31.5 26 29.5C30 31.5 32 35.5 30 39C35 36.5 39 32 39 26C39 18 33 12 33 12C33 12 31.5 21.5 26 25C20.5 21.5 26 14 26 4Z" fill="#E24B4A"/>
+      <path d="M26 29.5C22 31.5 20 35.5 22 39C24 42 28 42 30 39C32 35.5 30 31.5 26 29.5Z" fill="#EF9F27"/>
+    </svg>
+  </div>
+  <div>
+    <div class="connect-title">FIRE<span>BOT</span> CTRL</div>
+    <p style="font-size:13px;color:var(--muted);letter-spacing:1px;text-align:center;margin-top:4px">ESP NANO — HC-05 BLUETOOTH</p>
+  </div>
+  <p class="connect-sub">Pair your HC-05 module first in your OS Bluetooth settings, then click Connect to pick the serial port.</p>
+
+  <div id="connecting-spinner" style="display:none;flex-direction:column;align-items:center;gap:14px">
+    <div class="connecting-spinner"></div>
+    <p style="font-size:12px;color:var(--muted);font-family:'Share Tech Mono',monospace;letter-spacing:2px">ESTABLISHING LINK...</p>
+  </div>
+
+  <button id="connectBtn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 6.5l11 11M17.5 6.5L12 12l5.5 5.5M6.5 6.5L12 12l-5.5 5.5"/>
+      <polyline points="6.5,6.5 12,2 17.5,6.5"/><polyline points="6.5,17.5 12,22 17.5,17.5"/>
+    </svg>
+    Connect via Bluetooth
+  </button>
+
+  <p class="connect-error" id="conn-error"></p>
+  <p style="font-size:11px;color:var(--muted);font-family:'Share Tech Mono',monospace;text-align:center;letter-spacing:1px">
+    Requires Chrome / Edge browser · Web Serial API
+  </p>
+</div>
+
+<!-- ── Main App ────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg viewBox="0 0 36 36" fill="none">
+          <path d="M18 2C18 2 9 10 9 18C9 22.5 12 25.5 15 27C13.5 24 15 21 18 19.5C21 21 22.5 24 21 27C24 25.5 27 22.5 27 18C27 12 22 8 22 8C22 8 21 15 18 17C15 15 18 10 18 2Z" fill="#E24B4A"/>
+          <path d="M18 19.5C15 21 13.5 24 15 27C16.5 29 19.5 29 21 27C22.5 24 21 21 18 19.5Z" fill="#EF9F27"/>
+        </svg>
+      </div>
+      <div>
+        <div class="title">FIRE<span>BOT</span> CTRL</div>
+        <div class="status-row">
+          <span class="dot"></span>
+          <span class="status-text">HC-05 — CONNECTED</span>
+        </div>
+      </div>
+    </div>
+    <button class="disconnect-btn" onclick="disconnectAndReset()">✕ EXIT</button>
+  </div>
+
+  <!-- Flame Alert -->
+  <div class="alert-banner" id="alert-banner">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="#E24B4A"><path d="M12 1C12 1 5 8 5 14C5 17 7 19.5 9.5 21C8.5 18.5 10 16 12 15C14 16 15.5 18.5 14.5 21C17 19.5 19 17 19 14C19 9 15 6 15 6C15 6 14 11 12 12.5C10 11 12 7 12 1Z"/></svg>
+    <span>FLAME DETECTED — ACTIVATE PUMP!</span>
+  </div>
+
+  <!-- Grid: Movement + Sensors -->
+  <div class="grid">
+    <div class="card">
+      <div class="card-title">Movement</div>
+      <div class="dpad">
+        <div class="btn empty"></div>
+        <div class="btn" id="btn-F" onpointerdown="press('F')" onpointerup="release('F')" onpointerleave="release('F')">▲</div>
+        <div class="btn empty"></div>
+        <div class="btn" id="btn-L" onpointerdown="press('L')" onpointerup="release('L')" onpointerleave="release('L')">◀</div>
+        <div class="btn center-stop" id="btn-S" onpointerdown="press('S')" onpointerup="release('S')">STOP</div>
+        <div class="btn" id="btn-R" onpointerdown="press('R')" onpointerup="release('R')" onpointerleave="release('R')">▶</div>
+        <div class="btn empty"></div>
+        <div class="btn" id="btn-B" onpointerdown="press('B')" onpointerup="release('B')" onpointerleave="release('B')">▼</div>
+        <div class="btn empty"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Sensors</div>
+      <div class="sensor-row">
+        <div class="sensor">
+          <div class="flame-indicator" id="flame-ind"></div>
+          <div class="sensor-val" id="flame-val" style="font-size:12px;margin-top:2px">CLEAR</div>
+          <div class="sensor-label">Flame</div>
+        </div>
+        <div class="sensor">
+          <div class="sensor-val" id="temp-val">—°</div>
+          <div class="sensor-label">Temp</div>
+        </div>
+        <div class="sensor">
+          <div class="sensor-val" id="dist-val">—cm</div>
+          <div class="sensor-label">Dist</div>
+        </div>
+      </div>
+      <div style="margin-top:4px">
+        <div class="speed-label">
+          <span>Speed</span>
+          <span class="speed-val" id="spd-out">150</span>
+        </div>
+        <input type="range" min="0" max="255" step="1" value="150" oninput="updateSpeed(this.value)">
+        <div class="pwm-row">
+          <span>PWM: <span id="pwm-disp">150</span>/255</span>
+          <span><span id="pct-disp">59</span>%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fire Controls -->
+  <div class="full-card">
+    <div class="card-title">Fire Controls</div>
+    <button class="pump-btn" id="pump-btn" onclick="togglePump()">WATER PUMP — OFF</button>
+    <div class="extras-grid">
+      <button class="extra-btn" id="auto-btn"   onclick="toggleExtra('auto',  'A1','A0')">AUTO MODE</button>
+      <button class="extra-btn" id="servo-btn"  onclick="toggleExtra('servo', 'V1','V0')">SERVO SWEEP</button>
+      <button class="extra-btn" id="buzzer-btn" onclick="toggleExtra('buzzer','Z1','Z0')">ALARM</button>
+      <button class="extra-btn" id="led-btn"    onclick="toggleExtra('led',   'D1','D0')">HEADLIGHTS</button>
+    </div>
+  </div>
+
+  <!-- Keyboard hint -->
+  <div class="kbd-hint">
+    <span class="key">↑</span> <span class="key">↓</span> <span class="key">←</span> <span class="key">→</span> to move &nbsp;|&nbsp; <span class="key">Space</span> to stop
+  </div>
+
+  <!-- Terminal / Serial Monitor -->
+  <div class="full-card">
+    <div class="card-title">Serial Monitor — HC-05</div>
+    <div class="serial-box" id="terminal"></div>
+    <div class="cmd-row" style="margin-top:10px">
+      <input class="cmd-input" id="custom-cmd" placeholder="Type custom command..." onkeypress="if(event.key==='Enter') sendCustomCmd()">
+      <button class="cmd-send" onclick="sendCustomCmd()">SEND</button>
+    </div>
+  </div>
+
+</div><!-- end #app -->
+
+<script>
+  // ── Serial State ───────────────────────────────
+  let port, writer;
+  let speed    = 150;
+  let pumpOn   = false;
+  const extras = { auto: false, servo: false, buzzer: false, led: false };
+
+  // ── Connection ─────────────────────────────────
+  document.getElementById('connectBtn').addEventListener('click', async () => {
+    const btn      = document.getElementById('connectBtn');
+    const spinner  = document.getElementById('connecting-spinner');
+    const errEl    = document.getElementById('conn-error');
+
+    btn.disabled  = true;
+    btn.textContent = 'Connecting...';
+    spinner.style.display = 'flex';
+    errEl.style.display   = 'none';
+
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+
+      // Grab writer
+      writer = port.writable.getWriter();
+
+      // Switch UI
+      document.getElementById('connect-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+
+      log('HC-05 connected @ 9600 baud', 'sys');
+      log('FireBot ready — send commands', 'sys');
+
+      startReading();
+    } catch (err) {
+      spinner.style.display = 'none';
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6.5,6.5 12,2 17.5,6.5"/><polyline points="6.5,17.5 12,22 17.5,17.5"/><line x1="12" y1="2" x2="12" y2="22"/></svg> Connect via Bluetooth`;
+      if (err.name !== 'NotFoundError') {
+        errEl.textContent = 'Connection failed. Ensure HC-05 is paired & try again.';
+        errEl.style.display = 'block';
+      }
+    }
+  });
+
+  // ── Read incoming data from HC-05 ─────────────
+  async function startReading() {
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (port && port.readable) {
+      const reader = port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process complete lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete line
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            log(trimmed, 'rx');
+            parseSensorData(trimmed);
+          }
+        }
+      } catch (err) {
+        log('Read error: ' + err.message, 'sys');
+      } finally {
+        reader.releaseLock();
+      }
+    }
+  }
+
+  // ── Parse sensor data from Arduino ────────────
+  // Expected formats from Arduino:
+  //   FLAME:1  TEMP:35  DIST:22
+  function parseSensorData(line) {
+    const fmatch = line.match(/FLAME[:\s]+(\d+)/i);
+    const tmatch = line.match(/TEMP[:\s]+([\d.]+)/i);
+    const dmatch = line.match(/DIST[:\s]+([\d.]+)/i);
+
+    if (fmatch) {
+      const val   = parseInt(fmatch[1]);
+      const fire  = val === 1 || val < 500;
+      const ind    = document.getElementById('flame-ind');
+      const fv     = document.getElementById('flame-val');
+      const banner = document.getElementById('alert-banner');
+      if (fire) {
+        ind.classList.add('alert');
+        fv.textContent = 'ALERT'; fv.style.color = '#E24B4A';
+        banner.classList.add('show');
+      } else {
+        ind.classList.remove('alert');
+        fv.textContent = 'CLEAR'; fv.style.color = '';
+        banner.classList.remove('show');
+      }
+    }
+    if (tmatch) document.getElementById('temp-val').textContent = tmatch[1] + '°';
+    if (dmatch) document.getElementById('dist-val').textContent = dmatch[1] + 'cm';
+  }
+
+  // ── Send Command via Serial ────────────────────
+  let cmdQueue = [], processingQueue = false;
+
+  async function sendCmd(c) {
+    if (!port || !port.writable) { log('ERROR: No connection', 'sys'); return; }
+    cmdQueue.push(c);
+    if (!processingQueue) drainQueue();
+  }
+
+  async function drainQueue() {
+    if (processingQueue || cmdQueue.length === 0) return;
+    processingQueue = true;
+    const encoder = new TextEncoder();
+    while (cmdQueue.length > 0) {
+      const c = cmdQueue.shift();
+      try {
+        const w = port.writable.getWriter();
+        await w.write(encoder.encode(c + '\n'));
+        w.releaseLock();
+        log(`TX → ${c} | SPD=${speed}`, 'tx');
+        await new Promise(r => setTimeout(r, 50));
+      } catch (e) {
+        log('TX ERROR: ' + e.message, 'sys');
+      }
+    }
+    processingQueue = false;
+  }
+
+  // ── D-Pad ──────────────────────────────────────
+  function press(cmd) {
+    document.getElementById('btn-' + cmd)?.classList.add('pressed');
+    sendCmd(cmd);
+  }
+  function release(cmd) {
+    document.getElementById('btn-' + cmd)?.classList.remove('pressed');
+    if (cmd !== 'S') sendCmd('S');
+  }
+
+  // ── Keyboard ───────────────────────────────────
+  const keyMap = { ArrowUp:'F', ArrowDown:'B', ArrowLeft:'L', ArrowRight:'R', ' ':'S' };
+  document.addEventListener('keydown', e => { if (keyMap[e.key]) { e.preventDefault(); press(keyMap[e.key]); } });
+  document.addEventListener('keyup',   e => { if (keyMap[e.key] && e.key !== ' ') { e.preventDefault(); release(keyMap[e.key]); } });
+
+  // ── Speed ──────────────────────────────────────
+  function updateSpeed(v) {
+    speed = parseInt(v);
+    document.getElementById('spd-out').textContent  = speed;
+    document.getElementById('pwm-disp').textContent = speed;
+    document.getElementById('pct-disp').textContent = Math.round(speed / 255 * 100);
+    // Send speed to robot as separate command
+    sendCmd('SPD:' + speed);
+  }
+
+  // ── Pump ───────────────────────────────────────
+  function togglePump() {
+    pumpOn = !pumpOn;
+    const btn = document.getElementById('pump-btn');
+    btn.className   = 'pump-btn' + (pumpOn ? ' on' : '');
+    btn.textContent = `WATER PUMP — ${pumpOn ? 'ON ●' : 'OFF'}`;
+    sendCmd(pumpOn ? 'P1' : 'P0');
+  }
+
+  // ── Extras ─────────────────────────────────────
+  function toggleExtra(key, onCmd, offCmd) {
+    extras[key] = !extras[key];
+    document.getElementById(key + '-btn').classList.toggle('on', extras[key]);
+    sendCmd(extras[key] ? onCmd : offCmd);
+  }
+
+  // ── Custom Command ─────────────────────────────
+  function sendCustomCmd() {
+    const input = document.getElementById('custom-cmd');
+    const cmd   = input.value.trim();
+    if (!cmd) return;
+    sendCmd(cmd);
+    input.value = '';
+    input.focus();
+  }
+
+  // ── Terminal Logger ────────────────────────────
+  function ts() {
+    const t = new Date();
+    return `[${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}]`;
+  }
+  function pad(n) { return n.toString().padStart(2, '0'); }
+
+  function log(msg, type = '') {
+    const box = document.getElementById('terminal');
+    if (!box) return;
+    const p = document.createElement('p');
+    if (type) p.className = type;
+    p.textContent = `${ts()} ${msg}`;
+    box.appendChild(p);
+    if (box.children.length > 100) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // ── Disconnect ─────────────────────────────────
+  async function disconnectAndReset() {
+    try { if (port) await port.close(); } catch(e) {}
+    location.reload();
+  }
+
+  // ── Check Web Serial support ───────────────────
+  if (!('serial' in navigator)) {
+    document.getElementById('conn-error').textContent = 'Web Serial not supported. Use Chrome or Edge browser.';
+    document.getElementById('conn-error').style.display = 'block';
+    document.getElementById('connectBtn').disabled = true;
+  }
+</script>
+</body>
+</html>
